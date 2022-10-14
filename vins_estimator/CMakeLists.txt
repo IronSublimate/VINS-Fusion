@@ -2,9 +2,10 @@ cmake_minimum_required(VERSION 2.8.3)
 project(vins)
 
 #set(CMAKE_BUILD_TYPE "Release")
-set(CMAKE_CXX_FLAGS "-std=c++11")
-#-DEIGEN_USE_MKL_ALL")
+#set(CMAKE_CXX_FLAGS "-std=c++11")
+#set(CMAKE_CXX_FLAGS -DEIGEN_USE_MKL_ALL)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall")
+set(CMAKE_CXX_STANDARD 14)
 
 find_package(catkin REQUIRED COMPONENTS
     roscpp
@@ -14,7 +15,10 @@ find_package(catkin REQUIRED COMPONENTS
     tf
     cv_bridge
     camera_models
-    image_transport)
+    image_transport
+        rosconsole
+        rosconsole_bridge
+        rosbag)
 
 find_package(OpenCV REQUIRED)
 
@@ -62,3 +66,5 @@ target_link_libraries(kitti_odom_test vins_lib)
 add_executable(kitti_gps_test src/KITTIGPSTest.cpp)
 target_link_libraries(kitti_gps_test vins_lib) 
 
+add_executable(bag_mono_inertial src/bag_mono_inertial.cpp)
+target_link_libraries(bag_mono_inertial vins_lib)

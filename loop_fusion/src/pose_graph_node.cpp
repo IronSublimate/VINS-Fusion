@@ -412,7 +412,7 @@ int main(int argc, char **argv)
     {
         printf("please intput: rosrun loop_fusion loop_fusion_node [config file] \n"
                "for example: rosrun loop_fusion loop_fusion_node "
-               "/home/tony-ws1/catkin_ws/src/VINS-Fusion/config/euroc/euroc_stereo_imu_config.yaml \n");
+               "./src/VINS-Fusion/config/euroc/euroc_stereo_imu_config.yaml \n");
         return 0;
     }
     

@@ -159,11 +159,11 @@ class Estimator
 
     int loop_window_index;
 
-    MarginalizationInfo *last_marginalization_info;
+    MarginalizationInfo *last_marginalization_info = nullptr;
     vector<double *> last_marginalization_parameter_blocks;
 
     map<double, ImageFrame> all_image_frame;
-    IntegrationBase *tmp_pre_integration;
+    IntegrationBase *tmp_pre_integration = nullptr;
 
     Eigen::Vector3d initP;
     Eigen::Matrix3d initR;
