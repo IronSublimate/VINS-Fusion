@@ -30,6 +30,7 @@ nav_msgs::Path *global_path;
 double last_vio_t = -1;
 std::queue<sensor_msgs::NavSatFixConstPtr> gpsQueue;
 std::mutex m_buf;
+std::stringstream foutC;
 
 void publish_car_model(double t, Eigen::Vector3d t_w_car, Eigen::Quaterniond q_w_car)
 {
@@ -143,19 +144,19 @@ void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
 
 
     // write result to file
-    std::ofstream foutC("./output/vio_global.csv", ios::app);
-    foutC.setf(ios::fixed, ios::floatfield);
-    foutC.precision(0);
-    foutC << pose_msg->header.stamp.toSec() * 1e9 << ",";
-    foutC.precision(5);
-    foutC << global_t.x() << ","
-            << global_t.y() << ","
-            << global_t.z() << ","
-            << global_q.w() << ","
-            << global_q.x() << ","
-            << global_q.y() << ","
-            << global_q.z() << endl;
-    foutC.close();
+//    std::ofstream foutC("./output/vio_global.csv", ios::app);
+//    foutC.setf(ios::fixed, ios::floatfield);
+//    foutC.precision(0);
+//    foutC << pose_msg->header.stamp.toSec() * 1e9 << ",";
+//    foutC.precision(5);
+//    foutC << global_t.x() << ","
+//            << global_t.y() << ","
+//            << global_t.z() << ","
+//            << global_q.w() << ","
+//            << global_q.x() << ","
+//            << global_q.y() << ","
+//            << global_q.z() << endl;
+//    foutC.close();
 }
 
 int main(int argc, char **argv)
