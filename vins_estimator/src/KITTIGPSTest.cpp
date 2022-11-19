@@ -19,7 +19,9 @@
 #include <sensor_msgs/NavSatFix.h>
 #include "estimator/estimator.h"
 #include "utility/visualization.h"
+
 #include "save_path.h"
+#include "kitti_sync.h"
 
 using namespace std;
 using namespace Eigen;
@@ -27,7 +29,8 @@ using namespace Eigen;
 Estimator estimator;
 ros::Publisher pubGPS;
 
-std::ofstream gps_result;
+static std::ofstream gps_result;
+static int start_id, end_id;
 
 static void save_gps_path(const nav_msgs::OdometryConstPtr &msg) {
     gps_result.setf(ios::fixed, ios::floatfield);
@@ -47,10 +50,6 @@ int main(int argc, char **argv) {
     ros::init(argc, argv, "vins_estimator");
     ros::NodeHandle n("~");
     ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
-    auto output_file = save_kitti_path(argv[2]);
-    gps_result.open(output_file + "/gps.csv"); // ./output/kitti/2011_10_03_drive_0027_sync/2022-11-16-44-56-00_gps.csv
-
-    pubGPS = n.advertise<sensor_msgs::NavSatFix>("/gps", 1000);
 //    ros::NodeHandle n2;
     auto sb = n.subscribe<nav_msgs::Odometry>("/globalEstimator/global_odometry", 100, save_gps_path);
 
@@ -67,6 +66,14 @@ int main(int argc, char **argv) {
     string sequence = argv[2];
     printf("read sequence: %s\n", argv[2]);
     string dataPath = sequence + "/";
+
+    auto start_end = get_start_end_id(argv[2]);
+    start_id = std::get<0>(start_end);
+    end_id = std::get<1>(start_end);
+    auto output_file = save_kitti_path(argv[2]);
+    gps_result.open(output_file + "/gps.csv"); // ./output/kitti/2011_10_03_drive_0027_sync/2022-11-16-44-56-00/gps.csv
+
+    pubGPS = n.advertise<sensor_msgs::NavSatFix>("/gps", 1000);
 
     // load image list
     FILE *file;
@@ -119,7 +126,7 @@ int main(int argc, char **argv) {
     cv::Mat imLeft, imRight;
     double baseTime;
 
-    for (size_t i = 0; i < imageTimeList.size(); i++) {
+    for (int i = 0; i < int(imageTimeList.size()); i++) {
         if (ros::ok()) {
             if (imageTimeList[0] < GPSTimeList[0])
                 baseTime = imageTimeList[0];
@@ -188,8 +195,8 @@ int main(int argc, char **argv) {
 
             Eigen::Matrix<double, 4, 4> pose;
             estimator.getPoseInWorldFrame(pose);
-            if (outFile != NULL)
-                fprintf(outFile, "%f %f %f %f %f %f %f %f %f %f %f %f \n", pose(0, 0), pose(0, 1), pose(0, 2),
+            if (outFile != NULL and i >= start_id and i <= end_id)
+                fprintf(outFile, "%f %f %f %f %f %f %f %f %f %f %f %f\n", pose(0, 0), pose(0, 1), pose(0, 2),
                         pose(0, 3),
                         pose(1, 0), pose(1, 1), pose(1, 2), pose(1, 3),
                         pose(2, 0), pose(2, 1), pose(2, 2), pose(2, 3));
