@@ -31,18 +31,19 @@ ros::Publisher pubGPS;
 
 static std::ofstream gps_result;
 static int start_id, end_id;
+static double baseTime;
 
 static void save_gps_path(const nav_msgs::OdometryConstPtr &msg) {
     gps_result.setf(ios::fixed, ios::floatfield);
-    gps_result.precision(0);
-    gps_result << msg->header.stamp.toSec() * 1e9 << ",";
-    gps_result.precision(5);
-    gps_result << msg->pose.pose.position.x << ","
-               << msg->pose.pose.position.y << ","
-               << msg->pose.pose.position.z << ","
-               << msg->pose.pose.orientation.w << ","
-               << msg->pose.pose.orientation.x << ","
-               << msg->pose.pose.orientation.y << ","
+    gps_result.precision(12);
+    gps_result << msg->header.stamp.toSec() << " ";
+//    gps_result.precision(5);
+    gps_result << msg->pose.pose.position.x << " "
+               << msg->pose.pose.position.y << " "
+               << msg->pose.pose.position.z << " "
+               << msg->pose.pose.orientation.w << " "
+               << msg->pose.pose.orientation.x << " "
+               << msg->pose.pose.orientation.y << " "
                << msg->pose.pose.orientation.z << "\n";
 }
 
@@ -71,7 +72,7 @@ int main(int argc, char **argv) {
     start_id = std::get<0>(start_end);
     end_id = std::get<1>(start_end);
     auto output_file = save_kitti_path(argv[2]);
-    gps_result.open(output_file + "/gps.csv"); // ./output/kitti/2011_10_03_drive_0027_sync/2022-11-16-44-56-00/gps.csv
+    gps_result.open(output_file + "/gps.txt"); // ./output/kitti/2011_10_03_drive_0027_sync/2022-11-16-44-56-00/gps.csv
 
     pubGPS = n.advertise<sensor_msgs::NavSatFix>("/gps", 1000);
 
@@ -124,14 +125,17 @@ int main(int argc, char **argv) {
         printf("Output path dosen't exist: %s\n", output_file.c_str());
     string leftImagePath, rightImagePath;
     cv::Mat imLeft, imRight;
-    double baseTime;
 
-    for (int i = 0; i < int(imageTimeList.size()); i++) {
+    int s = std::max(0, start_id);
+    int e = std::min(int(imageTimeList.size()), end_id) + 1;
+
+    if (imageTimeList[0] < GPSTimeList[0])
+        baseTime = imageTimeList[0];
+    else
+        baseTime = GPSTimeList[0];
+
+    for (int i = s; i < e; i++) {
         if (ros::ok()) {
-            if (imageTimeList[0] < GPSTimeList[0])
-                baseTime = imageTimeList[0];
-            else
-                baseTime = GPSTimeList[0];
 
             //printf("base time is %f\n", baseTime);
             printf("process image %d\n", (int) i);
@@ -195,11 +199,20 @@ int main(int argc, char **argv) {
 
             Eigen::Matrix<double, 4, 4> pose;
             estimator.getPoseInWorldFrame(pose);
-            if (outFile != NULL and i >= start_id and i <= end_id)
-                fprintf(outFile, "%f %f %f %f %f %f %f %f %f %f %f %f\n", pose(0, 0), pose(0, 1), pose(0, 2),
-                        pose(0, 3),
-                        pose(1, 0), pose(1, 1), pose(1, 2), pose(1, 3),
-                        pose(2, 0), pose(2, 1), pose(2, 2), pose(2, 3));
+            if (outFile != NULL) {
+//                fprintf(outFile, "%f %f %f %f %f %f %f %f %f %f %f %f\n", pose(0, 0), pose(0, 1), pose(0, 2),
+//                        pose(0, 3),
+//                        pose(1, 0), pose(1, 1), pose(1, 2), pose(1, 3),
+//                        pose(2, 0), pose(2, 1), pose(2, 2), pose(2, 3));
+                Eigen::Quaterniond Q;
+                Q = pose.block<3, 3>(0, 0);
+                Eigen::Vector3d T = pose.block<3, 1>(0, 3);
+                fprintf(outFile, "%f %f %f %f %f %f %f %f\n",
+                        imgTime,
+                        T.x(),T.y(),T.z(),
+                        Q.w(),Q.x(),Q.y(),Q.z());
+            }
+
 
             // cv::imshow("leftImage", imLeft);
             // cv::imshow("rightImage", imRight);
