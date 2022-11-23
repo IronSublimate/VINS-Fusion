@@ -33,6 +33,8 @@ static std::ofstream gps_result;
 static int start_id, end_id;
 static double baseTime;
 
+void pub_gps(double imgTime, double lat, double lon, double alt, double pos_accuracy, double navstat, double numsats);
+
 static void save_gps_path(const nav_msgs::OdometryConstPtr &msg) {
     gps_result.setf(ios::fixed, ios::floatfield);
     gps_result.precision(12);
@@ -183,17 +185,7 @@ int main(int argc, char **argv) {
 
             std::fclose(GPSFile);
 
-            sensor_msgs::NavSatFix gps_position;
-            gps_position.header.frame_id = "NED";
-            gps_position.header.stamp = ros::Time(imgTime);
-            gps_position.status.status = navstat;
-            gps_position.status.service = numsats;
-            gps_position.latitude = lat;
-            gps_position.longitude = lon;
-            gps_position.altitude = alt;
-            gps_position.position_covariance[0] = pos_accuracy;
-            //printf("pos_accuracy %f \n", pos_accuracy);
-            pubGPS.publish(gps_position);
+            pub_gps(imgTime, lat, lon, alt, pos_accuracy, navstat, numsats);
 
             estimator.inputImage(imgTime, imLeft, imRight);
 
@@ -225,5 +217,25 @@ int main(int argc, char **argv) {
         fclose(outFile);
     gps_result.close();
     return 0;
+}
+
+void pub_gps(double imgTime, double lat, double lon, double alt, double pos_accuracy, double navstat, double numsats) {
+    constexpr int pub_period = 32;
+    static int cnt=pub_period;
+    if(cnt==pub_period) {
+        sensor_msgs::NavSatFix gps_position;
+        gps_position.header.frame_id = "NED";
+        gps_position.header.stamp = ros::Time(imgTime);
+        gps_position.status.status = navstat;
+        gps_position.status.service = numsats;
+        gps_position.latitude = lat;
+        gps_position.longitude = lon;
+        gps_position.altitude = alt;
+        gps_position.position_covariance[0] = pos_accuracy;
+        //printf("pos_accuracy %f \n", pos_accuracy);
+        pubGPS.publish(gps_position);
+        cnt=0;
+    }
+    ++cnt;
 }
 

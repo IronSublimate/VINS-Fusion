@@ -28,7 +28,7 @@ using namespace std;
 class GlobalOptimization
 {
 public:
-	GlobalOptimization();
+	GlobalOptimization(bool multi_thread = false);
 	~GlobalOptimization();
 	void inputGPS(double t, double latitude, double longitude, double altitude, double posAccuracy);
 	void inputOdom(double t, Eigen::Vector3d OdomP, Eigen::Quaterniond OdomQ);
@@ -36,7 +36,7 @@ public:
 	nav_msgs::Path global_path;
 
 private:
-	void GPS2XYZ(double latitude, double longitude, double altitude, double* xyz);
+	void GPS2XYZ(double t, double latitude, double longitude, double altitude, double *xyz);
 	void optimize();
 	void updateGlobalPath();
 
@@ -52,5 +52,7 @@ private:
 	Eigen::Vector3d lastP;
 	Eigen::Quaterniond lastQ;
 	std::thread threadOpt;
+	bool multi_thread;
 
+	void optimize_once();
 };
