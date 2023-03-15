@@ -9,7 +9,7 @@
 #include <vector>
 #include <boost/filesystem.hpp>
 
-std::string save_kitti_path(const std::string &kitti_path_str) {
+std::string save_kitti_path(const std::string &kitti_path_str, const std::string &dataset_name = "kitti") {
 //std::string path(argv[3]);
     boost::filesystem::path kitti_path(kitti_path_str);
     kitti_path.remove_trailing_separator();
@@ -18,7 +18,7 @@ std::string save_kitti_path(const std::string &kitti_path_str) {
     std::time_t time = std::time({});
     char timeString[sizeof("yyyy-mm-dd-hh-mm-ss")];
     std::strftime(timeString, sizeof(timeString), "%Y-%m-%d-%H-%M-%S", std::gmtime(&time));
-    auto save_dir = "output/kitti" / data_name/ timeString;
+    auto save_dir = boost::filesystem::path("output") / dataset_name / data_name / timeString;
 
     boost::filesystem::create_directories(save_dir);
 

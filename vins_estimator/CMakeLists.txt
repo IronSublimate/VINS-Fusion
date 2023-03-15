@@ -66,5 +66,8 @@ target_link_libraries(kitti_odom_test vins_lib)
 add_executable(kitti_gps_test src/KITTIGPSTest.cpp)
 target_link_libraries(kitti_gps_test vins_lib) 
 
+add_executable(kitti360_test src/KITTI360Test.cpp)
+target_link_libraries(kitti360_test vins_lib)
+
 add_executable(bag_mono_inertial src/bag_mono_inertial.cpp)
 target_link_libraries(bag_mono_inertial vins_lib)
