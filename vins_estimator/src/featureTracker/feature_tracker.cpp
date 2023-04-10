@@ -9,6 +9,9 @@
  * Author: Qin Tong (qintonguav@gmail.com)
  *******************************************************/
 
+/**
+ * 注释来自 https://zhuanlan.zhihu.com/p/555270835
+ */
 #include "feature_tracker.h"
 
 bool FeatureTracker::inBorder(const cv::Point2f &pt)
@@ -52,16 +55,29 @@ FeatureTracker::FeatureTracker()
     hasPrediction = false;
 }
 
+/**
+ * @brief 对跟踪到的特征点，按照被追踪到的次数排序并依次选点，使用mask进行类似非极大抑制，半径为30，去掉密集点，使特征点分布均匀。
+ *
+ * @return ** void
+ */
 void FeatureTracker::setMask()
 {
     mask = cv::Mat(row, col, CV_8UC1, cv::Scalar(255));
 
     // prefer to keep features that are tracked for long time
+    // 目的是使特征点能够被更长时间的跟踪
+
+    // prefer to keep features that are tracked for long time
+    /*
+    int：该特征点被跟踪次数 = track_cnt[i]
+    pair<cv::Point2f, int>：特征点的2D观测位置，以及该特征点的ID号
+    */
     vector<pair<int, pair<cv::Point2f, int>>> cnt_pts_id;
 
     for (unsigned int i = 0; i < cur_pts.size(); i++)
         cnt_pts_id.push_back(make_pair(track_cnt[i], make_pair(cur_pts[i], ids[i])));
 
+    // 将特征点按照track_cnt的次数，从大到小排序
     sort(cnt_pts_id.begin(), cnt_pts_id.end(), [](const pair<int, pair<cv::Point2f, int>> &a, const pair<int, pair<cv::Point2f, int>> &b)
          {
             return a.first > b.first;
@@ -73,11 +89,16 @@ void FeatureTracker::setMask()
 
     for (auto &it : cnt_pts_id)
     {
+        // 这个特征点对应的mask值为255，表明点是黑的，还没占有
+        // 因为可能在cv::circle(mask, it.second.first, MIN_DIST, 0, -1)的时候，某些特征点被设置为0
+        // 这样避免了特征点扎堆现象
         if (mask.at<uchar>(it.second.first) == 255)
         {
+            // 将该点重新存入
             cur_pts.push_back(it.second.first);
             ids.push_back(it.second.second);
             track_cnt.push_back(it.first);
+            // 并在该点周围MIN_DIST的范围内将像素点设为0，避免在该点附近又进行了像素点的提取，从而避免扎堆现象
             cv::circle(mask, it.second.first, MIN_DIST, 0, -1);
         }
     }
@@ -91,6 +112,14 @@ double FeatureTracker::distance(cv::Point2f &pt1, cv::Point2f &pt2)
     return sqrt(dx * dx + dy * dy);
 }
 
+
+/**
+ * @brief 对输入图像进行特征点提取以及光流跟踪
+ * @param[in] _cur_time 当前帧的时间戳
+ * @param[in] _img 输入左目帧
+ * @param[in] _img1 输入右目帧
+ * @param[out] map 帧中成功跟踪的像素点以及当前帧中新提取的像素点
+ **/
 map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1)
 {
     TicToc t_r;
@@ -107,13 +136,22 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
             clahe->apply(rightImg, rightImg);
     }
     */
+    /*
+Step 1、跟踪上一帧
+          A、如果是第一帧，跳过Step1，仅做角点提取相关工作
+          B、如果是第2、3...帧，需要跟踪上一帧
+*/
+    // 没有额外加right说明的，都是右目帧相关的变量
     cur_pts.clear();
-
+    // Step 1.1、正向跟踪
+    // prev_pts非空，说明该帧非第一帧，当前帧需要和上一帧做光流追踪
+    // 否则的话，直接跳过这部分
     if (prev_pts.size() > 0)
     {
         TicToc t_o;
-        vector<uchar> status;
+        vector<uchar> status; // 跟踪状态：1 跟踪成功；2 跟踪失败
         vector<float> err;
+        // 是否有一些预测的先验值，因为光流追踪本质上是一个高度非线性的优化问题，如果有更好的初值，就可以使用更少的金字塔层数来实现高精度追踪结果
         if(hasPrediction)
         {
             cur_pts = predict_pts;
@@ -126,21 +164,27 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
                 if (status[i])
                     succ_num++;
             }
+            // 如果追上的结果有点少，那就使用四层金字塔重新追踪一次（3：0 1 2 3）
             if (succ_num < 10)
                cv::calcOpticalFlowPyrLK(prev_img, cur_img, prev_pts, cur_pts, status, err, cv::Size(21, 21), 3);
         }
-        else
+        else // 当然要是没有好的先验，就和之前一样，使用四层金字塔追踪
             cv::calcOpticalFlowPyrLK(prev_img, cur_img, prev_pts, cur_pts, status, err, cv::Size(21, 21), 3);
         // reverse check
+        // Step 1.2、反向跟踪
+        // reverse check
+        // 双向光流检查，通常我们是用前一帧的结果来追踪后一帧，也可以用后一帧结果来追踪前一帧，做一个double check
         if(FLOW_BACK)
         {
-            vector<uchar> reverse_status;
+            vector<uchar> reverse_status; // 记录反向跟踪状态
             vector<cv::Point2f> reverse_pts = prev_pts;
+            // 由于做过一遍了，置信度也比较高了，所以这里就用两层金字塔了
             cv::calcOpticalFlowPyrLK(cur_img, prev_img, cur_pts, reverse_pts, reverse_status, err, cv::Size(21, 21), 1, 
             cv::TermCriteria(cv::TermCriteria::COUNT+cv::TermCriteria::EPS, 30, 0.01), cv::OPTFLOW_USE_INITIAL_FLOW);
             //cv::calcOpticalFlowPyrLK(cur_img, prev_img, cur_pts, reverse_pts, reverse_status, err, cv::Size(21, 21), 3); 
             for(size_t i = 0; i < status.size(); i++)
             {
+                // 两遍状态都得好并且反向追踪和原始角点像素差距小于0.5像素，认为是一个合格的追踪结果
                 if(status[i] && reverse_status[i] && distance(prev_pts[i], reverse_pts[i]) <= 0.5)
                 {
                     status[i] = 1;
@@ -149,7 +193,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
                     status[i] = 0;
             }
         }
-        
+        // 下面的操作跟之前一致，就是保留被成功追踪的特征点
         for (int i = 0; i < int(cur_pts.size()); i++)
             if (status[i] && !inBorder(cur_pts[i]))
                 status[i] = 0;
@@ -159,21 +203,42 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         reduceVector(track_cnt, status);
         ROS_DEBUG("temporal optical flow costs: %fms", t_o.toc());
         //printf("track cnt %d\n", (int)ids.size());
+        // 关于ids、track_cnt的说明
+        /*
+           ids：当有新的特征点进入时，特征点ID号+1，并push_back进入ids里面
+           track_cnt：记录特征点成功跟踪的次数
+           ATTENTION：ids和track_cnt都只是记录当前帧成功跟踪到的特征点！！！
+           如果没有被当前帧成功看到，那么这个点就会从ids和track_cnt中被剔除
+           这应该和VINS的某些策略息息相关：因为VINS的关键帧选取就是——次新帧和次次新帧的视差对比，从而判断是丢弃最旧帧或是丢弃次新帧
+           这样永远都可以将新帧进行保留，而且不需要过多历史帧信息
+        */
     }
-
+    /* Step 1.3、记录特征点被观测到的次数
+        如果是第一帧，会直接跳到这，进行特征点提取和记录
+    */
+    // 该操作针对第2、3...帧之后的帧
+    // 已经将跟踪失败的特征点进行剔除，剩下的特征点说明又被成功跟踪，那么跟踪次数依次+1
     for (auto &n : track_cnt)
         n++;
-
+    // Step 2、提取当前帧中新的特征点信息
+    // 提取新的特征点，这部分也和之前一致
     if (1)
     {
         //rejectWithF();
+        // Step 2.2、设置mask。不仅提出密集的特征点，还设置感兴趣区域防止新特征点密集
         ROS_DEBUG("set mask begins");
         TicToc t_m;
         setMask();
         ROS_DEBUG("set mask costs %fms", t_m.toc());
 
+        // Step 2.3、提取新的特征点
         ROS_DEBUG("detect feature begins");
         TicToc t_t;
+        /*
+        MAX_CNT：规定的每帧中能够提取最大数量的特征点
+        static_cast<int>(cur_pts.size())：现已有的特征点数量
+        n_max_cnt：还能提取的特征点数量
+        */
         int n_max_cnt = MAX_CNT - static_cast<int>(cur_pts.size());
         if (n_max_cnt > 0)
         {
@@ -181,12 +246,25 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
                 cout << "mask is empty " << endl;
             if (mask.type() != CV_8UC1)
                 cout << "mask type wrong " << endl;
+            /*void cv::goodFeaturesToTrack(    在mask中不为0的区域检测新的特征点
+             *   InputArray  image,              输入图像
+             *   OutputArray     corners,        存放检测到的角点的vector
+             *   int     maxCorners,             返回的角点的数量的最大值
+             *   double  qualityLevel,           角点质量水平的最低阈值（范围为0到1，质量最高角点的水平为1），小于该阈值的角点被拒绝
+             *   double  minDistance,            返回角点之间欧式距离的最小值
+             *   InputArray  mask = noArray(),   和输入图像具有相同大小，类型必须为CV_8UC1,用来描述图像中感兴趣的区域，只在感兴趣区域中检测角点
+             *   int     blockSize = 3,          计算协方差矩阵时的窗口大小
+             *   bool    useHarrisDetector = false,  指示是否使用Harris角点检测，如不指定则使用shi-tomasi算法
+             *   double  k = 0.04                Harris角点检测需要的k值
+             *)
+             */
             cv::goodFeaturesToTrack(cur_img, n_pts, MAX_CNT - cur_pts.size(), 0.01, MIN_DIST, mask);
         }
         else
             n_pts.clear();
         ROS_DEBUG("detect feature costs: %f ms", t_t.toc());
 
+        // 若提取到新的特征点，就将新特征点ids、track_cnt更新
         for (auto &p : n_pts)
         {
             cur_pts.push_back(p);
@@ -195,26 +273,39 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         }
         //printf("feature cnt after add %d\n", (int)ids.size());
     }
-
+    // Step 3、去畸变并归一化相机平面
+    // cur_un_pts记录得是去畸变后的在归一化相机坐标系下的x,y
+    // TODO：为什么不对2D像素坐标去畸变？？？目前为止cur_pts应该都没有进行去畸变？？？然后直接使用？？？
+    //       或者哪儿我没有注意到？？？
+    //       ！！！还是说为了能够和下一帧图像的坐标进行原滋原味的跟踪，就不去畸变？？？
+    //       需要和ORB中的相关处理进行比较——光流跟踪和描述子匹配的差异之一
     cur_un_pts = undistortedPts(cur_pts, m_camera[0]);
+    // Step 4、计算当前特征点速度
     pts_velocity = ptsVelocity(ids, cur_un_pts, cur_un_pts_map, prev_un_pts_map);
 
+    // Step 5、若是双目，需要额外进行一些处理
+    // 针对双目进行处理
     if(!_img1.empty() && stereo_cam)
     {
+        // 一些状态位的清零工作
         ids_right.clear();
         cur_right_pts.clear();
         cur_un_right_pts.clear();
         right_pts_velocity.clear();
         cur_un_right_pts_map.clear();
+        // 如果左目帧上的特征点非空
         if(!cur_pts.empty())
         {
+            // 左右目的特征点跟踪
             //printf("stereo image; track feature on right image\n");
             vector<cv::Point2f> reverseLeftPts;
             vector<uchar> status, statusRightLeft;
             vector<float> err;
             // cur left ---- cur right
+            // 左目相机去和右目相机做光流追踪
             cv::calcOpticalFlowPyrLK(cur_img, rightImg, cur_pts, cur_right_pts, status, err, cv::Size(21, 21), 3);
             // reverse check cur right ---- cur left
+            // 同样可以做双向光流的double check
             if(FLOW_BACK)
             {
                 cv::calcOpticalFlowPyrLK(rightImg, cur_img, cur_right_pts, reverseLeftPts, statusRightLeft, err, cv::Size(21, 21), 3);
@@ -238,6 +329,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
             reduceVector(cur_un_pts, status);
             reduceVector(pts_velocity, status);
             */
+            // 右目去畸变以及计算速度
             cur_un_right_pts = undistortedPts(cur_right_pts, m_camera[1]);
             right_pts_velocity = ptsVelocity(ids_right, cur_un_right_pts, cur_un_right_pts_map, prev_un_right_pts_map);
         }
@@ -246,6 +338,8 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
     if(SHOW_TRACK)
         drawTrack(cur_img, rightImg, ids, cur_pts, cur_right_pts, prevLeftPtsMap);
 
+    // Step 6、将当前帧的状态进行转移，并保存
+    // 当前的状态量转换成上一帧的状态量
     prev_img = cur_img;
     prev_pts = cur_pts;
     prev_un_pts = cur_un_pts;
@@ -257,10 +351,13 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
     for(size_t i = 0; i < cur_pts.size(); i++)
         prevLeftPtsMap[ids[i]] = cur_pts[i];
 
+    // 对结果进行总结
+    // idx -> （cam id - 性质）
     map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> featureFrame;
     for (size_t i = 0; i < ids.size(); i++)
     {
         int feature_id = ids[i];
+        // 去畸变的归一化相机坐标
         double x, y ,z;
         x = cur_un_pts[i].x;
         y = cur_un_pts[i].y;
@@ -278,6 +375,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         featureFrame[feature_id].emplace_back(camera_id,  xyz_uv_velocity);
     }
 
+    // 若是双目，还需进行右目帧的信息保存
     if (!_img1.empty() && stereo_cam)
     {
         for (size_t i = 0; i < ids_right.size(); i++)
@@ -290,6 +388,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
             double p_u, p_v;
             p_u = cur_right_pts[i].x;
             p_v = cur_right_pts[i].y;
+            // 右目的camera id = 1
             int camera_id = 1;
             double velocity_x, velocity_y;
             velocity_x = right_pts_velocity[i].x;
@@ -297,6 +396,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
 
             Eigen::Matrix<double, 7, 1> xyz_uv_velocity;
             xyz_uv_velocity << x, y, z, p_u, p_v, velocity_x, velocity_y;
+            // 只有右目也有对应特征点的才会emplace back
             featureFrame[feature_id].emplace_back(camera_id,  xyz_uv_velocity);
         }
     }
